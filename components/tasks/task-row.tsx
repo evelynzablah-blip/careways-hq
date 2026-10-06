@@ -87,7 +87,7 @@ export function TaskRow({
           {task.title}
         </p>
         <div className="mt-1 flex flex-wrap items-center gap-x-2.5 gap-y-1 text-xs text-muted-foreground">
-          {variant === "waiting" && task.waitingOn ? (
+          {(variant === "waiting" || task.status === "waiting") && task.waitingOn ? (
             <span
               data-tone={waitedDays !== null && waitedDays >= 7 ? "red" : "orange"}
               className="inline-flex items-center gap-1 font-medium text-(--tone-fg)"

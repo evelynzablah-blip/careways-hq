@@ -32,7 +32,9 @@ export function bucketOf(t: Task, today = todayISO()): TaskBucket | null {
   return null;
 }
 
+/** Done tasks: most recently completed first. Open tasks: by due date, then priority. */
 export function sortTasks(a: Task, b: Task) {
+  if (a.status === "done" && b.status === "done") return (a.completedAt ?? "") < (b.completedAt ?? "") ? 1 : -1;
   const pa = PRIORITY[a.priority].rank;
   const pb = PRIORITY[b.priority].rank;
   if ((a.due ?? "9999") !== (b.due ?? "9999")) return (a.due ?? "9999") < (b.due ?? "9999") ? -1 : 1;
