@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useState, useTransition } from "react";
+import { startTransition, useState } from "react";
 import { Hourglass } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
@@ -18,8 +18,8 @@ export type MissionLookup = Record<string, Pickers["missions"][number]>;
 /** Completes a task with a short strike-through, then offers Undo in a toast. */
 export function useCompleteTask(task: Task) {
   const [completing, setCompleting] = useState(task.status === "done");
-  const [, startTransition] = useTransition();
 
+  // Global startTransition (not useTransition): Undo runs after this row has unmounted.
   function toggle(checked: boolean) {
     const prev = task.status;
     setCompleting(checked);
@@ -29,16 +29,15 @@ export function useCompleteTask(task: Task) {
     }
     // Let the check + strike-through animation play before the row leaves the list.
     setTimeout(() => {
-      startTransition(async () => {
-        await setTaskStatus(task.id, "done");
-        toast.success("Task completed", {
-          description: task.title,
-          action: {
-            label: "Undo",
-            onClick: () => startTransition(() => setTaskStatus(task.id, prev === "done" ? "todo" : prev)),
-          },
-        });
+      toast.success("Task completed", {
+        description: task.title,
+        duration: 6000,
+        action: {
+          label: "Undo",
+          onClick: () => startTransition(() => setTaskStatus(task.id, prev === "done" ? "todo" : prev)),
+        },
       });
+      startTransition(() => setTaskStatus(task.id, "done"));
     }, 450);
   }
 

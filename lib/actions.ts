@@ -33,12 +33,10 @@ export async function setTaskStatus(id: string, status: TaskStatus) {
   if (!(status in TASK_STATUS)) throw new Error("Invalid status");
   const t = db().tasks.find((x) => x.id === id);
   if (!t) throw new Error("Task not found");
-  const prev = t.status;
   t.status = status;
   t.completedAt = status === "done" ? relISO(0) : undefined;
   if (status === "waiting" && !t.waitingOn) t.waitingOn = { who: "Someone", since: relISO(0) };
   refresh();
-  return { prev };
 }
 
 export interface NewTask {
