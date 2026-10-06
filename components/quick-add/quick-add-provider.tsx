@@ -1,6 +1,6 @@
 "use client";
 
-import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
+import { createContext, Suspense, use, useCallback, useContext, useEffect, useMemo, useState } from "react";
 import type { QuickAddKind } from "@/lib/nav";
 import type { Pickers } from "@/lib/queries";
 import type { AreaId, Priority, TaskStatus } from "@/lib/types";
@@ -26,7 +26,7 @@ export function useQuickAdd() {
   return ctx;
 }
 
-export function QuickAddProvider({ pickers, children }: { pickers: Pickers; children: React.ReactNode }) {
+export function QuickAddProvider({ pickers, children }: { pickers: Promise<Pickers>; children: React.ReactNode }) {
   const [state, setState] = useState<{ open: boolean; kind: QuickAddKind; defaults: QuickAddDefaults; key: number }>({
     open: false,
     kind: "task",
@@ -55,14 +55,20 @@ export function QuickAddProvider({ pickers, children }: { pickers: Pickers; chil
   return (
     <QuickAddContext.Provider value={value}>
       {children}
-      <QuickAdd
-        key={state.key}
-        open={state.open}
-        onOpenChange={(o) => setState((s) => ({ ...s, open: o }))}
-        initialKind={state.kind}
-        defaults={state.defaults}
-        pickers={pickers}
-      />
+      <Suspense fallback={null}>
+        <QuickAddWithData
+          key={state.key}
+          open={state.open}
+          onOpenChange={(o) => setState((s) => ({ ...s, open: o }))}
+          initialKind={state.kind}
+          defaults={state.defaults}
+          pickers={pickers}
+        />
+      </Suspense>
     </QuickAddContext.Provider>
   );
+}
+
+function QuickAddWithData({ pickers, ...props }: Omit<React.ComponentProps<typeof QuickAdd>, "pickers"> & { pickers: Promise<Pickers> }) {
+  return <QuickAdd {...props} pickers={use(pickers)} />;
 }

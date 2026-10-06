@@ -17,7 +17,9 @@ export const metadata: Metadata = {
 };
 
 export default async function RootLayout({ children }: LayoutProps<"/">) {
-  const [cookieStore, pickers] = await Promise.all([cookies(), getPickers()]);
+  const cookieStore = await cookies();
+  // Not awaited: Quick Add resolves it with use(), so the shell streams immediately.
+  const pickers = getPickers();
   const collapsed = cookieStore.get(SIDEBAR_COOKIE)?.value === "collapsed";
 
   return (

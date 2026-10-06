@@ -4,7 +4,7 @@
 // cards with priority badge. Drag & drop between columns (dnd-kit) plus a
 // "Move to…" menu on every card for keyboard and screen-reader users.
 
-import { startTransition, useOptimistic, useState } from "react";
+import { startTransition, useId, useOptimistic, useState } from "react";
 import {
   DndContext,
   DragOverlay,
@@ -145,6 +145,7 @@ export function TaskBoard({ tasks, missions }: { tasks: Task[]; missions: Missio
     state.map((t) => (t.id === id ? { ...t, status } : t)),
   );
   const [activeId, setActiveId] = useState<string | null>(null);
+  const dndId = useId(); // stable across SSR/hydration (dnd-kit's own counter is not)
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 6 } }), useSensor(KeyboardSensor));
 
   function move(id: string, status: TaskStatus) {
@@ -170,6 +171,7 @@ export function TaskBoard({ tasks, missions }: { tasks: Task[]; missions: Missio
 
   return (
     <DndContext
+      id={dndId}
       sensors={sensors}
       collisionDetection={pointerWithin}
       onDragStart={(e) => setActiveId(String(e.active.id))}

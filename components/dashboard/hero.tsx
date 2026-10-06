@@ -1,17 +1,16 @@
 import Image from "next/image";
+import { Suspense } from "react";
 import Link from "next/link";
 import { ArrowRight, Hourglass, ListChecks, TriangleAlert } from "lucide-react";
 import { formatLongDate } from "@/lib/dates";
 import { getTaskBuckets } from "@/lib/queries";
+import { Skeleton } from "@/components/ui/skeleton";
 import { Greeting } from "./greeting";
 import { CustomizeDashboard } from "./customize";
 
 // Refs: Asana Home (date + big greeting + summary chips + Customize),
 // Deel Home (overdue alert card with a direct action).
-export async function Hero() {
-  const buckets = await getTaskBuckets();
-  const overdue = buckets.overdue.length;
-
+export function Hero() {
   return (
     <header className="relative">
       <div className="relative h-36 overflow-hidden sm:h-48 lg:h-56">
@@ -39,20 +38,47 @@ export async function Hero() {
           </div>
 
           <div className="flex flex-wrap items-center gap-2">
-            <SummaryChip href="#today" icon={<ListChecks className="size-3.5" aria-hidden />}>
-              {buckets.today.length} tasks today
-            </SummaryChip>
-            <SummaryChip href="/tasks?due=overdue" tone="red" icon={<TriangleAlert className="size-3.5" aria-hidden />}>
-              {overdue} overdue
-            </SummaryChip>
-            <SummaryChip href="#waiting" icon={<Hourglass className="size-3.5" aria-hidden />}>
-              {buckets.waiting.length} waiting
-            </SummaryChip>
+            <Suspense
+              fallback={[0, 1, 2].map((i) => (
+                <Skeleton key={i} className="h-8 w-28 rounded-full" />
+              ))}
+            >
+              <SummaryChips />
+            </Suspense>
             <CustomizeDashboard />
           </div>
         </div>
 
-        {overdue > 0 && (
+        <Suspense fallback={null}>
+          <OverdueBanner />
+        </Suspense>
+      </div>
+    </header>
+  );
+}
+
+async function SummaryChips() {
+  const buckets = await getTaskBuckets();
+  return (
+    <>
+      <SummaryChip href="#today" icon={<ListChecks className="size-3.5" aria-hidden />}>
+        {buckets.today.length} tasks today
+      </SummaryChip>
+      <SummaryChip href="/tasks?due=overdue" tone="red" icon={<TriangleAlert className="size-3.5" aria-hidden />}>
+        {buckets.overdue.length} overdue
+      </SummaryChip>
+      <SummaryChip href="#waiting" icon={<Hourglass className="size-3.5" aria-hidden />}>
+        {buckets.waiting.length} waiting
+      </SummaryChip>
+    </>
+  );
+}
+
+async function OverdueBanner() {
+  const buckets = await getTaskBuckets();
+  const overdue = buckets.overdue.length;
+  return (
+    overdue > 0 && (
           <div
             role="status"
             data-tone="red"
@@ -70,9 +96,7 @@ export async function Hero() {
               Review <ArrowRight className="size-3.5" aria-hidden />
             </Link>
           </div>
-        )}
-      </div>
-    </header>
+    )
   );
 }
 

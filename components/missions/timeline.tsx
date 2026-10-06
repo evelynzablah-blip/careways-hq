@@ -59,15 +59,15 @@ export function Timeline({ missions }: { missions: MissionSummary[] }) {
         <Button variant="outline" size="sm" onClick={() => scrollToToday()}>
           Today
         </Button>
-        <p className="ml-auto flex items-center gap-3 text-xs text-muted-foreground">
+        <p data-tone="blue" className="ml-auto flex items-center gap-3 text-xs text-muted-foreground">
           <span className="flex items-center gap-1.5">
-            <span className="h-2.5 w-5 rounded-sm bg-muted ring-1 ring-border" aria-hidden /> Planning
+            <span className="h-2.5 w-5 rounded-sm bg-(--tone-bg) ring-1 ring-(--tone-border)" aria-hidden /> Planning
           </span>
           <span className="flex items-center gap-1.5">
-            <span className="h-2.5 w-5 rounded-sm bg-primary" aria-hidden /> In the field
+            <span className="h-2.5 w-5 rounded-sm bg-(--tone-dot)" aria-hidden /> In the field
           </span>
           <span className="flex items-center gap-1.5">
-            <span className="h-2.5 w-5 rounded-sm border border-dashed border-primary" aria-hidden /> Approx. dates
+            <span className="h-2.5 w-5 rounded-sm border-2 border-dashed border-(--tone-fg) bg-(--tone-dot)/60" aria-hidden /> Approx. dates
           </span>
         </p>
       </div>
