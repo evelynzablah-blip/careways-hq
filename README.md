@@ -2,7 +2,7 @@
 
 Web app version of the CareWays Collaborative HQ (originally in Notion), with UX patterns taken from Asana, Todoist, ClickUp, Airtable, Buffer and others (references below).
 
-**Stack:** Next.js 16 (App Router, Turbopack) · React 19 · TypeScript · Tailwind CSS v4 · shadcn/ui (Radix) · lucide-react · dnd-kit · date-fns.
+**Stack:** Next.js 16 (App Router, Turbopack) · React 19 · TypeScript · Tailwind CSS v4 · shadcn/ui (Radix) · lucide-react · dnd-kit · date-fns · Supabase (Postgres).
 
 ## Running it
 
@@ -18,7 +18,42 @@ MOCK_LATENCY_MS=1500 npm run dev          # loading skeletons
 MOCK_FAIL=missions,content npm run dev    # per-widget error state
 ```
 
-Data lives in memory: anything you create, complete or move is lost when the server restarts. That's on purpose until a real backend is connected (see "Pending").
+Needs `.env.local` with `SUPABASE_URL` and `SUPABASE_SECRET_KEY` (see "Data").
+
+## Data
+
+All data lives in **Supabase** (project `nozjgnfrpewbomebnpoj`), Postgres tables in `public`:
+
+| Table | What | Notes |
+|---|---|---|
+| `areas` | the 8 project areas | `id` is the area slug (`missions`, `programs`…), ordered by `sort_order` |
+| `missions` | missions | `date_start`/`date_end`/`date_precision` all null = TBD; ordered by `seq` |
+| `tasks` | all tasks | `waiting_who` + `waiting_since` → `waitingOn`; FKs to missions/areas (`on delete set null`); ordered by `seq` |
+| `content` | social posts + newsletters | `publish_at` is `timestamp` without tz (local wall-clock `YYYY-MM-DDTHH:mm`) |
+| `inbox_items` | notes and contacts | `created_at timestamptz` |
+
+Every enum (status, priority, platform, country, kind) is a `check` constraint, and every table has `created_at`/`updated_at` (trigger).
+
+**Security model.** RLS is on for every table, with a deny policy for `anon`/`authenticated` and all grants revoked from them, so the public/publishable key can't read or write anything. The app talks to Supabase **only from the server** (`lib/supabase.ts`, guarded by `import "server-only"`) with the secret key, which bypasses RLS. **Auth.** One admin login. `proxy.ts` sends every signed-out request to `/login`, and the root layout and every Server Action re-check the session (`lib/auth.ts`). The session is an HMAC-signed, httpOnly cookie (`lib/session.ts`) valid for 30 days. The password is only stored as a scrypt hash in `ADMIN_PASSWORD_HASH`; to change it, generate a new hash with `node -e 'const c=require("crypto"),s=c.randomBytes(16);console.log("scrypt:"+s.toString("base64")+":"+c.scryptSync(process.argv[1],s,64).toString("base64"))' 'NEW-PASSWORD'`, replace the var in Vercel and redeploy. Changing `AUTH_SECRET` signs everyone out.
+
+**Env vars** (`.env.local` locally; Vercel → Settings → Environment Variables in Production and Preview). Never prefix them with `NEXT_PUBLIC_`.
+
+```
+SUPABASE_URL=https://nozjgnfrpewbomebnpoj.supabase.co
+SUPABASE_SECRET_KEY=sb_secret_…   # Supabase → Project Settings → API Keys
+ADMIN_EMAIL=ezablah@careways.world
+ADMIN_PASSWORD_HASH=scrypt:<salt>:<hash>
+AUTH_SECRET=<48+ random bytes, base64url>
+```
+
+**Migrations and seed.** `supabase/migrations/` holds the schema (applied with the Supabase MCP `apply_migration`, or `supabase db push`). `supabase/seed.sql` is the former mock data with its relative dates frozen as of 2026-10-20; it's demo data, not confirmed facts. Production was seeded with areas and missions only (2026-10-22); the demo tasks, content and inbox were left out so they don't mix with real tasks. It uses `on conflict do nothing`, so re-running it only restores missing rows. To start over from the seed, run in the SQL editor (this **deletes everything** in these tables):
+
+```sql
+truncate public.tasks, public.content, public.inbox_items, public.missions, public.areas restart identity;
+-- then paste and run supabase/seed.sql
+```
+
+After schema changes, regenerate `lib/database.types.ts` (MCP `generate_typescript_types` or `supabase gen types typescript --project-id nozjgnfrpewbomebnpoj`).
 
 ## Structure
 
@@ -40,11 +75,15 @@ components/
   areas/       AreaCard/AreaGrid
   quick-add/   QuickAdd (⌘K), provider, QuickAddButton
   shell/       Sidebar (collapsible + mobile drawer), ViewTabs, PageHeader
+supabase/
+  migrations/  schema + RLS
+  seed.sql     initial data
 lib/
   types.ts     domain types (mirror the Notion databases)
   meta.ts      the ONE semantic system: labels + colors for status/priority/areas
-  data.ts      mock data (brief figures; tasks dated relative to "today")
-  store.ts     in-memory store            ← replace when connecting a DB/Notion
+  supabase.ts  server-only Supabase client (secret key)
+  database.types.ts   DB types (generated from the schema)
+  rows.ts      DB rows (snake_case) → domain types (camelCase)
   queries.ts   reads (async)              ← the only layer the UI reads from
   actions.ts   writes (Server Actions)    ← the only layer the UI writes through
   derive.ts    Notion formulas: buckets, progress, health
@@ -69,12 +108,13 @@ lib/
 
 Quality checks performed: responsive 3→2→1 columns; sidebar collapses to a rail and becomes a drawer on mobile; no horizontal scroll at 375 px on any route; axe-core WCAG 2.1 AA with 0 violations; visible focus, skip link, full keyboard support (⌘K, checkboxes, menus, dnd-kit KeyboardSensor); `prefers-reduced-motion`; per-widget skeletons and error states; `next/image` with `sizes`; server components by default.
 
-## Pending to connect real data
+## Pending
 
-1. **Source of truth.** Decide between (a) Notion as the backend via its API, or (b) your own DB (Postgres/Supabase) synced with Notion. Types already mirror the Notion databases: All Tasks (`a673b79d…`), Missions DB (`df3e30de…`), Content (`80b89d64…`), Project Areas (`f816bf2d…`).
-2. Rewrite only `lib/queries.ts` and `lib/actions.ts` (and delete `lib/store.ts` / `lib/data.ts`). Notion mapping: `"🔴 High"` → `high`, `"To do"` → `todo`, `Dates.start/end` → `dates`, `Waiting On` (text) → `waitingOn.who` (**missing**: a "waiting since" field to compute the "6d"), `Progress %` → `progress`.
-3. **Authentication** (e.g. Google with the careways.world account) and a session check in each Server Action (see the note in `actions.ts`).
-4. Caching/revalidation: with a real API, use `"use cache"` + `cacheTag` and `updateTag()` in the actions.
-5. Contacts/notes live in an in-memory "Inbox"; they should be connected to the Partners & People database and the notes page.
-6. Mission photos: replace the Unsplash images (`public/missions`, credits in `public/CREDITS.md`) with your own field photos.
-7. **Brand:** the brief asks for forest green + serif; the official guide (2022) uses navy `#204071`, cyan `#3796d8`, aqua `#85f0d4`, yellow `#ffe362` and Neue Haas Grotesk. Everything is in tokens in `app/globals.css` (`:root` and `[data-tone]`) if you want to switch it.
+1. **Authentication** (e.g. Google with the careways.world account) and a session check in each Server Action (see the note in `actions.ts`). Until then, keep the Vercel deployment behind Deployment Protection.
+2. **Replace the demo data** with real data: the seed comes from the old mock (placeholder names, partners and tasks), not from confirmed CareWays facts.
+3. **Notion sync** (optional): types still mirror the Notion databases: All Tasks (`a673b79d…`), Missions DB (`df3e30de…`), Content (`80b89d64…`), Project Areas (`f816bf2d…`). Mapping: `"🔴 High"` → `high`, `"To do"` → `todo`, `Dates.start/end` → `dates`, `Waiting On` → `waitingOn.who` (Notion has no "waiting since" field), `Progress %` → `progress`.
+4. Contacts/notes live in the `inbox_items` table; they should be connected to Partners & People and the notes page.
+5. Editing/deleting missions, content and inbox items from the UI (today only tasks change status).
+6. Caching: reads are dynamic on every request; `"use cache"` + `cacheTag` / `updateTag()` could be added if it gets slow.
+7. Mission photos: replace the Unsplash images (`public/missions`, credits in `public/CREDITS.md`) with your own field photos.
+8. **Brand:** the brief asks for forest green + serif; the official guide (2022) uses navy `#204071`, cyan `#3796d8`, aqua `#85f0d4`, yellow `#ffe362` and Neue Haas Grotesk. Everything is in tokens in `app/globals.css` (`:root` and `[data-tone]`) if you want to switch it.

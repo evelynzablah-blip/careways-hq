@@ -4,7 +4,8 @@ import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useState } from "react";
-import { Menu, PanelLeftClose, PanelLeftOpen, Plus } from "lucide-react";
+import { LogOut, Menu, PanelLeftClose, PanelLeftOpen, Plus } from "lucide-react";
+import { logout } from "@/app/login/actions";
 import { cn } from "@/lib/utils";
 import { AREA_TONE } from "@/lib/meta";
 import { NAV, QUICK_LINKS } from "@/lib/nav";
@@ -150,10 +151,22 @@ function SidebarBody({ collapsed, onNavigate }: { collapsed: boolean; onNavigate
           EZ
         </span>
         {!collapsed && (
-          <div className="min-w-0 text-sm leading-tight">
+          <div className="min-w-0 flex-1 text-sm leading-tight">
             <p className="truncate font-medium">Evelyn Zablah</p>
             <p className="truncate text-xs text-muted-foreground">Director</p>
           </div>
+        )}
+        {!collapsed && (
+          <form action={logout}>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button type="submit" variant="ghost" size="icon-sm" aria-label="Sign out">
+                  <LogOut aria-hidden />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>Sign out</TooltipContent>
+            </Tooltip>
+          </form>
         )}
       </div>
     </div>

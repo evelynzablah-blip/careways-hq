@@ -1,10 +1,10 @@
 "use server";
 
-// Write layer (Server Actions). Same contract as queries.ts: swap the store
-// calls for a DB / Notion client later; UI code stays the same.
-// NOTE: no auth yet — add a session check here before exposing beyond localhost.
+// Write layer (Server Actions) on Supabase. Same contract as before; UI code
+// stays the same. Every action checks the session (lib/auth.ts) first.
 
-import { refresh } from "next/cache";
+import { revalidatePath } from "next/cache";
+import { requireSession } from "./auth";
 import { relISO } from "./dates";
 import {
   CONTENT_STATUS,
@@ -12,7 +12,8 @@ import {
   PRIORITY,
   TASK_STATUS,
 } from "./meta";
-import { db, nextId } from "./store";
+import { CONTENT_COLS, INBOX_COLS, TASK_COLS, toContent, toInbox, toTask } from "./rows";
+import { must, supabase } from "./supabase";
 import type {
   AreaId,
   ContentItem,
@@ -29,14 +30,37 @@ const AREA_IDS: AreaId[] = ["missions", "programs", "communications", "partners"
 const isISODate = (s: unknown): s is string => typeof s === "string" && /^\d{4}-\d{2}-\d{2}$/.test(s);
 const clean = (s: unknown, max = 200) => (typeof s === "string" ? s.trim().slice(0, max) : "");
 
+/** Returns `id` if that mission exists, else undefined. */
+async function existingMission(id: unknown): Promise<string | undefined> {
+  if (typeof id !== "string" || !id) return undefined;
+  const res = await supabase().from("missions").select("id").eq("id", id).maybeSingle();
+  if (res.error) throw new Error(`Supabase missions: ${res.error.message}`);
+  return res.data?.id;
+}
+
 export async function setTaskStatus(id: string, status: TaskStatus) {
+  await requireSession();
   if (!(status in TASK_STATUS)) throw new Error("Invalid status");
-  const t = db().tasks.find((x) => x.id === id);
-  if (!t) throw new Error("Task not found");
-  t.status = status;
-  t.completedAt = status === "done" ? relISO(0) : undefined;
-  if (status === "waiting" && !t.waitingOn) t.waitingOn = { who: "Someone", since: relISO(0) };
-  refresh();
+  const db = supabase();
+  const updated = must(
+    await db
+      .from("tasks")
+      .update({ status, completed_at: status === "done" ? relISO(0) : null })
+      .eq("id", id)
+      .select("id"),
+    "update task",
+  );
+  if (updated.length === 0) throw new Error("Task not found");
+  if (status === "waiting") {
+    // Only when nobody is set yet, like before (keeps an existing waitingOn).
+    const res = await db
+      .from("tasks")
+      .update({ waiting_who: "Someone", waiting_since: relISO(0) })
+      .eq("id", id)
+      .is("waiting_who", null);
+    if (res.error) throw new Error(`Supabase update task: ${res.error.message}`);
+  }
+  revalidatePath("/", "layout");
 }
 
 export interface NewTask {
@@ -51,24 +75,30 @@ export interface NewTask {
 }
 
 export async function createTask(input: NewTask): Promise<Task> {
+  await requireSession();
   const title = clean(input.title);
   if (!title) throw new Error("Title is required");
-  const store = db();
-  const missionId = store.missions.some((m) => m.id === input.missionId) ? input.missionId : undefined;
-  const task: Task = {
-    id: nextId("t"),
-    title,
-    status: input.status && input.status in TASK_STATUS ? input.status : "todo",
-    priority: input.priority && input.priority in PRIORITY ? input.priority : "medium",
-    due: isISODate(input.due) ? input.due : undefined,
-    missionId,
-    areaId: input.areaId && AREA_IDS.includes(input.areaId) ? input.areaId : missionId ? "missions" : undefined,
-    owner: "Evelyn",
-  };
-  if (task.status === "waiting") task.waitingOn = { who: clean(input.waitingWho, 60) || "Someone", since: relISO(0) };
-  store.tasks.push(task);
-  refresh();
-  return task;
+  const missionId = await existingMission(input.missionId);
+  const status: TaskStatus = input.status && input.status in TASK_STATUS ? input.status : "todo";
+  const row = must(
+    await supabase()
+      .from("tasks")
+      .insert({
+        title,
+        status,
+        priority: input.priority && input.priority in PRIORITY ? input.priority : "medium",
+        due: isISODate(input.due) ? input.due : null,
+        mission_id: missionId ?? null,
+        area_id: input.areaId && AREA_IDS.includes(input.areaId) ? input.areaId : missionId ? "missions" : null,
+        owner: "Evelyn",
+        ...(status === "waiting" ? { waiting_who: clean(input.waitingWho, 60) || "Someone", waiting_since: relISO(0) } : {}),
+      })
+      .select(TASK_COLS)
+      .single(),
+    "create task",
+  );
+  revalidatePath("/", "layout");
+  return toTask(row);
 }
 
 export interface NewContent {
@@ -81,35 +111,42 @@ export interface NewContent {
 }
 
 export async function createContent(input: NewContent): Promise<ContentItem> {
+  await requireSession();
   const title = clean(input.title);
   if (!title) throw new Error("Title is required");
   const type: ContentType = input.type === "newsletter" ? "newsletter" : "social-post";
-  const store = db();
-  const item: ContentItem = {
-    id: nextId("c"),
-    title,
-    type,
-    platform: type === "newsletter" ? "email" : input.platform && input.platform in PLATFORM ? input.platform : "instagram",
-    publishAt: `${isISODate(input.date) ? input.date : relISO(7)}T09:00`,
-    status: input.status && input.status in CONTENT_STATUS ? input.status : "ideation",
-    missionId: store.missions.some((m) => m.id === input.missionId) ? input.missionId : undefined,
-    owner: "Evelyn",
-  };
-  store.content.push(item);
-  refresh();
-  return item;
+  const row = must(
+    await supabase()
+      .from("content")
+      .insert({
+        title,
+        type,
+        platform: type === "newsletter" ? "email" : input.platform && input.platform in PLATFORM ? input.platform : "instagram",
+        publish_at: `${isISODate(input.date) ? input.date : relISO(7)}T09:00`,
+        status: input.status && input.status in CONTENT_STATUS ? input.status : "ideation",
+        mission_id: (await existingMission(input.missionId)) ?? null,
+        owner: "Evelyn",
+      })
+      .select(CONTENT_COLS)
+      .single(),
+    "create content",
+  );
+  revalidatePath("/", "layout");
+  return toContent(row);
 }
 
 export async function createInboxItem(input: { kind: InboxItem["kind"]; text: string }): Promise<InboxItem> {
+  await requireSession();
   const text = clean(input.text, 500);
   if (!text) throw new Error("Text is required");
-  const item: InboxItem = {
-    id: nextId("i"),
-    kind: input.kind === "contact" ? "contact" : "note",
-    text,
-    createdAt: new Date().toISOString().slice(0, 16),
-  };
-  db().inbox.push(item);
-  refresh();
-  return item;
+  const row = must(
+    await supabase()
+      .from("inbox_items")
+      .insert({ kind: input.kind === "contact" ? "contact" : "note", text })
+      .select(INBOX_COLS)
+      .single(),
+    "create inbox item",
+  );
+  revalidatePath("/", "layout");
+  return toInbox(row);
 }

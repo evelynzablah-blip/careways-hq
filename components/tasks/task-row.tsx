@@ -86,6 +86,11 @@ export function TaskRow({
         >
           {task.title}
         </p>
+        {task.notes && (
+          <p className="mt-0.5 line-clamp-1 text-xs text-muted-foreground" title={task.notes}>
+            {task.notes}
+          </p>
+        )}
         <div className="mt-1 flex flex-wrap items-center gap-x-2.5 gap-y-1 text-xs text-muted-foreground">
           {(variant === "waiting" || task.status === "waiting") && task.waitingOn ? (
             <span

@@ -84,6 +84,8 @@ export interface Task {
   owner?: string;
   waitingOn?: WaitingOn;
   completedAt?: ISODate;
+  /** Where it came from, e.g. "From: <sender> – <subject> – <date>" (email triage). */
+  notes?: string;
 }
 
 export interface ContentItem {

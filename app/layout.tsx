@@ -5,6 +5,7 @@ import { Toaster } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { QuickAddProvider } from "@/components/quick-add/quick-add-provider";
 import { MobileTopBar, SIDEBAR_COOKIE, Sidebar } from "@/components/shell/sidebar";
+import { getSession } from "@/lib/auth";
 import { getPickers } from "@/lib/queries";
 import "./globals.css";
 
@@ -17,6 +18,14 @@ export const metadata: Metadata = {
 };
 
 export default async function RootLayout({ children }: LayoutProps<"/">) {
+  // Signed out (only /login gets past proxy.ts): no shell, no data.
+  if (!(await getSession())) {
+    return (
+      <html lang="en" className={`${inter.variable} ${fraunces.variable} antialiased`}>
+        <body className="min-h-dvh">{children}</body>
+      </html>
+    );
+  }
   const cookieStore = await cookies();
   // Not awaited: Quick Add resolves it with use(), so the shell streams immediately.
   const pickers = getPickers();
