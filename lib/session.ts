@@ -35,9 +35,13 @@ export async function signSession(email: string): Promise<string> {
 /** Returns the signed-in email, or null if the token is missing, forged or expired. */
 export async function verifySession(token: string | undefined): Promise<string | null> {
   if (!token) return null;
-  const parts = token.split(".");
-  if (parts.length !== 3) return null;
-  const [email, exp, sig] = parts;
+  // Split from the right: the encoded email keeps its dots (`.` isn't escaped).
+  const sigAt = token.lastIndexOf(".");
+  const expAt = token.lastIndexOf(".", sigAt - 1);
+  if (expAt <= 0) return null;
+  const email = token.slice(0, expAt);
+  const exp = token.slice(expAt + 1, sigAt);
+  const sig = token.slice(sigAt + 1);
   if (!safeEqual(sig, await hmac(`${email}.${exp}`))) return null;
   if (!(Number(exp) > Date.now())) return null;
   return decodeURIComponent(email);
